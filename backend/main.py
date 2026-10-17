@@ -63,6 +63,7 @@ print(
     "| GOOGLE_CLIENT_SECRET:", bool(os.getenv("GOOGLE_CLIENT_SECRET")),
     "| GOOGLE_CREDENTIALS_JSON:", bool(os.getenv("GOOGLE_CREDENTIALS_JSON")),
     "| GEMINI_API_KEY:", bool(os.getenv("GEMINI_API_KEY")),
+    "| CHANDAM_API_URL:", bool(CHANDAM_API_URL),
 )
 
 def build_vision_client():
@@ -693,7 +694,9 @@ meaning, or fact that is not supported by that text.
   Put each line of the verse on its own line separated by <br>, with no verse number inside.
 - Then give the meaning / explanation in clear Telugu paragraphs (అర్థం / భావం).
 - Add a short "విశేషాలు" note only if the text supports it.
-- Reproduce the COMPLETE passage available below. Never cut off mid-sentence.
+- Reproduce the COMPLETE passage available below. Never cut off mid-sentence. The text
+  may include the preceding and following page of the same book, so use them to
+  complete a verse or passage that continues across a page break.
 - No preamble such as "Here is the answer". Start directly with the heading.
 
 OCR TEXT:
@@ -895,8 +898,33 @@ def search_pdf_highlight(request: Request, query: str = Query(...), books: str =
         
     conn.close()
     
+    # Pull the pages either side of each match, so a verse that continues across a
+    # page break is not cut off in the answer.
+    neighbours = {}
+    try:
+        conditions, nparams = [], []
+        for m in matches:
+            for p in (m['page_number'] - 1, m['page_number'] + 1):
+                if p >= 1:
+                    conditions.append("(book_title = %s AND page_number = %s)")
+                    nparams.extend([m['book_title'], p])
+        if conditions:
+            nconn = get_db_connection()
+            ncursor = nconn.cursor(cursor_factory=RealDictCursor)
+            ncursor.execute(
+                "SELECT book_title, page_number, extracted_text FROM pdf_text_index WHERE "
+                + " OR ".join(conditions),
+                tuple(nparams),
+            )
+            for row in ncursor.fetchall():
+                neighbours[(row['book_title'], row['page_number'])] = row['extracted_text'] or ""
+            nconn.close()
+    except Exception as e:
+        print("Neighbour page fetch error:", e)
+
     results = []
     ai_items = []
+    seen_pages = set()
     for m in matches:
         text = m['extracted_text'] or ""
         pos = -1
@@ -919,13 +947,19 @@ def search_pdf_highlight(request: Request, query: str = Query(...), books: str =
         if pos == -1: pos = 0
             
         snippet = text[max(0, pos - 400):min(len(text), pos + 1600)].replace('\n', ' ')
-        # The AI reads the FULL page text (capped), not the display window, so its
-        # answer is never cut off mid-passage.
-        ai_items.append({
-            "book_title": m['book_title'],
-            "page_number": m['page_number'],
-            "snippet": text.strip()[:6000],
-        })
+        # The AI reads the full page plus its neighbours (capped), so a verse that
+        # continues onto the next page is not cut off mid-passage.
+        page_key = (m['book_title'], m['page_number'])
+        if page_key not in seen_pages:
+            seen_pages.add(page_key)
+            prev_text = neighbours.get((m['book_title'], m['page_number'] - 1), "")
+            next_text = neighbours.get((m['book_title'], m['page_number'] + 1), "")
+            parts = [t.strip() for t in (prev_text, text, next_text) if t and t.strip()]
+            ai_items.append({
+                "book_title": m['book_title'],
+                "page_number": m['page_number'],
+                "snippet": "\n".join(parts)[:12000],
+            })
         filename = m.get('filename')
         highlighted_img_b64 = ""
         
