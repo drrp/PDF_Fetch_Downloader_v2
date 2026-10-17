@@ -999,17 +999,39 @@ def search_pdf_highlight(request: Request, query: str = Query(...), books: str =
 
     # ఛందస్సు: for poetry (non-grammar) searches, ask the Chandam API for the metre.
     chandassu = None
+    chandassu_note = None
     if ai_items and not _has_grammar_source(ai_items):
-        verse_text = _extract_verse(ai_summary) or ai_items[0]["snippet"][:1500]
-        chandassu = analyze_chandassu(verse_text)
+        if not _chandam_base_url():
+            chandassu_note = ("CHANDAM_API_URL సెట్ చేయబడలేదు. Render → Environment లో దాన్ని సెట్ చేసి, "
+                              "యాప్‌ను మళ్లీ డిప్లాయ్ చేయండి.")
+        else:
+            verse_text = _extract_verse(ai_summary) or ai_items[0]["snippet"][:1500]
+            chandassu = analyze_chandassu(verse_text)
+            if chandassu is None:
+                chandassu_note = ("Chandam API నుండి సమాధానం రాలేదు. chandam-api సర్వీస్ నడుస్తోందో, "
+                                  "URL సరైనదో /chandam-check ద్వారా చూడండి.")
 
     return {
         "query": cleaned_query,
         "ai_summary": ai_summary,
         "chandassu": chandassu,
+        "chandassu_note": chandassu_note,
         "results": results
     }
     
+@app.get("/chandam-check")
+def chandam_check():
+    """Diagnostic: is the Chandam API reachable from this app?"""
+    base = _chandam_base_url()
+    if not base:
+        return {"configured": False, "note": "CHANDAM_API_URL is not set."}
+    try:
+        r = requests.get(f"{base}/health", timeout=10)
+        return {"configured": True, "url": base, "status": r.status_code, "body": (r.text or "")[:500]}
+    except Exception as e:
+        return {"configured": True, "url": base, "error": str(e)}
+
+
 @app.get("/view-pdf")
 def view_pdf(filename: str, page: int = 1):
     file_path = os.path.join(DOWNLOAD_DIR, filename)

@@ -538,11 +538,8 @@
         }
 
         // ఛందస్సు: result from the Chandam API
-        if (
-          data.chandassu &&
-          (data.chandassu.name || data.chandassu.beautified || data.chandassu.html)
-        ) {
-          const cd = data.chandassu;
+        const cd = data.chandassu;
+        if (cd && (cd.name || cd.beautified || cd.html)) {
           let ch = `<div class="chandassu mb-2">ఛందస్సు: ${cd.name || "తెలియదు"}`;
           if (cd.percentage !== null && cd.percentage !== undefined) {
             ch += ` <span style="font-size:15px;color:#475569;">(${cd.percentage}% సరిపోలిక)</span>`;
@@ -551,6 +548,9 @@
           if (cd.beautified) ch += cd.beautified;
           if (cd.html) ch += `<div class="chandam-gana mt-2">${cd.html}</div>`;
           chandassuBody.innerHTML = ch;
+          chandassuCard.style.display = "block";
+        } else if (data.chandassu_note) {
+          chandassuBody.innerHTML = `<div class="text-danger telugu-body"><i class="fa-solid fa-triangle-exclamation me-2"></i>${data.chandassu_note}</div>`;
           chandassuCard.style.display = "block";
         } else {
           chandassuCard.style.display = "none";
