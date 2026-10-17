@@ -1,3 +1,4 @@
+import os
 import requests
 from bs4 import BeautifulSoup
 import concurrent.futures
@@ -99,35 +100,66 @@ class TTDScraper(BaseLibraryScraper):
         match = re.search(r"id=(\d+)", book_page_url)
         if not match:
             raise Exception("Could not find publication ID for this TTD ebook.")
-            
+
         book_id = match.group(1)
-        pdf_url = f"{self.base_domain}/download.php?id={book_id}"
+        candidate_urls = [
+            f"{self.base_domain}/download.php?id={book_id}",
+            f"{self.base_domain}/uploads/pdf/{book_id}.pdf",
+        ]
 
         session = requests.Session()
         session.headers.update(self.headers)
-        
-        try:
-            # Pre-visit the reader page with an extended 60-second window
-            session.get(book_page_url, timeout=60)
-            
-            # Request the stream with a 120-second (2-minute) timeout to handle slow server speeds
-            download_headers = {"Referer": book_page_url}
-            pdf_response = session.get(pdf_url, headers=download_headers, stream=True, timeout=120)
-            
-            if pdf_response.status_code != 200:
-                alt_url = f"{self.base_domain}/uploads/pdf/{book_id}.pdf"
-                pdf_response = session.get(alt_url, headers=download_headers, stream=True, timeout=120)
 
-            if pdf_response.status_code != 200:
-                raise Exception(f"TTD server response error (HTTP {pdf_response.status_code}).")
+        last_error = ""
+        timed_out = False
 
-            # Write the file safely in chunks without rushing the slow connection
-            with open(filepath, "wb") as f:
-                for chunk in pdf_response.iter_content(chunk_size=16384):
-                    if chunk:
-                        f.write(chunk)
-                        
-        except requests.exceptions.Timeout:
-            raise Exception("The TTD server is responding too slowly (timed out after 120 seconds). Please try again later.")
-        except Exception as e:
-            raise Exception(str(e))
+        # The TTD server is often slow, so retry a few times with generous windows.
+        for attempt in range(1, 4):
+            # Warm up the reader page so the download endpoint sees a session.
+            try:
+                session.get(book_page_url, timeout=(15, 60))
+            except requests.exceptions.RequestException:
+                pass  # not fatal on its own
+
+            for url in candidate_urls:
+                try:
+                    download_headers = {"Referer": book_page_url}
+                    # (connect timeout, read timeout): allow up to ~5 min of slow streaming
+                    resp = session.get(url, headers=download_headers, stream=True, timeout=(30, 300))
+                    if resp.status_code != 200:
+                        last_error = f"HTTP {resp.status_code} from {url}"
+                        continue
+
+                    with open(filepath, "wb") as f:
+                        for chunk in resp.iter_content(chunk_size=65536):
+                            if chunk:
+                                f.write(chunk)
+
+                    # Make sure we actually received a PDF, not an HTML error page.
+                    with open(filepath, "rb") as f:
+                        header = f.read(5)
+                    if header != b"%PDF-":
+                        try:
+                            os.remove(filepath)
+                        except OSError:
+                            pass
+                        last_error = "The TTD server returned a non-PDF response."
+                        continue
+
+                    return  # success
+                except requests.exceptions.Timeout:
+                    timed_out = True
+                    last_error = "timeout"
+                    continue
+                except requests.exceptions.RequestException as e:
+                    last_error = str(e)
+                    continue
+
+        if timed_out:
+            raise Exception(
+                "The TTD server did not respond in time (tried 3 times with longer "
+                "windows). This is usually the TTD server being slow, or it blocking "
+                "requests from outside India. Try again later, or open the book page "
+                f"directly: {book_page_url}"
+            )
+        raise Exception(f"Could not download this TTD ebook. Last error: {last_error}")
