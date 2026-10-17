@@ -68,12 +68,16 @@ Add these in **Settings -> Environment**:
 | `COOKIE_HTTPS_ONLY` | `true` |
 | `PYTHON_VERSION` | `3.12.0` |
 
-### 3d. Persistent disk (optional, paid plans)
+### 3d. Free tier vs paid (and the card prompt)
 
-The app writes downloaded PDFs to `downloads/`. To keep them across restarts add a
-disk: **Settings -> Disks -> Add**, mount path
-`/opt/render/project/src/downloads`, 1 GB. The `render.yaml` blueprint already
-declares this.
+The blueprint ships on the **free** plan, which needs no payment method. Free
+services sleep after ~15 minutes idle (the next visit cold-starts in ~30-60s) and
+have no persistent disk, so downloaded PDFs are lost on restart.
+
+To keep downloads across restarts, move to a paid instance and add a disk: set
+`plan: starter` in `render.yaml` and uncomment the `disk:` block, or use
+**Settings -> Disks -> Add** with mount path `/opt/render/project/src/downloads`.
+Render asks for a card for any paid instance or disk.
 
 ## 4. Custom domain: library.auchithyam.com
 
