@@ -23,9 +23,35 @@ Target setup: **Render** for the app, **Supabase** for the database, custom doma
   OAuth 2.0 Client ID. Under **Authorized redirect URIs** add
   `https://library.auchithyam.com/auth/callback`
   (and, while testing, your `https://<app>.onrender.com/auth/callback`).
-- **Vision (OCR):** a service account with the Cloud Vision API enabled; download
-  its JSON key.
+- **Vision (OCR):** see 2b below.
 - **Gemini:** an API key from https://aistudio.google.com/apikey.
+
+### 2b. Setting GOOGLE_CREDENTIALS_JSON (Vision / OCR)
+
+1. In Google Cloud Console, pick the project and enable the API:
+   **APIs & Services -> Library -> "Cloud Vision API" -> Enable** (billing must be on).
+2. **IAM & Admin -> Service Accounts** -> create one (or reuse an existing one) ->
+   **Keys -> Add key -> Create new key -> JSON**. A `.json` file downloads.
+3. Turn that file into a single line so it can live in one environment variable:
+
+   ```bash
+   python -c "import json; print(json.dumps(json.load(open('credentials.json'))))"
+   ```
+
+   `json.dumps` keeps the private key's newlines as `\n` escapes, which is exactly
+   what the app expects. Copy the entire output.
+4. In Render -> your service -> **Environment -> Add Environment Variable**:
+   - Key: `GOOGLE_CREDENTIALS_JSON`
+   - Value: paste the whole single-line output from step 3.
+5. **Delete `GOOGLE_APPLICATION_CREDENTIALS`** if it is set. It points at a local
+   file that is never deployed, and it is what caused the original
+   "credentials.json was not found" error.
+6. Save (this redeploys). On boot the logs print
+   `Startup config check -> ... GOOGLE_CREDENTIALS_JSON: True`.
+
+Alternative: Render's **Secret Files** feature can mount the JSON at a path, in
+which case set `GOOGLE_APPLICATION_CREDENTIALS` to that path instead. The env-var
+route above is simpler and is what the app prefers.
 
 ## 3. Render wiring (step by step)
 
