@@ -645,7 +645,7 @@ def analyze_chandassu(poem_text):
                 "topMatches": 3,
                 "renderFormat": 1,   # 1 = Html
             },
-            timeout=20,
+            timeout=60,  # free tier may need to wake from sleep (~30-60s)
         )
         if resp.status_code != 200:
             print("Chandam API HTTP", resp.status_code, (resp.text or "")[:200])
@@ -1026,7 +1026,7 @@ def chandam_check():
     if not base:
         return {"configured": False, "note": "CHANDAM_API_URL is not set."}
     try:
-        r = requests.get(f"{base}/health", timeout=10)
+        r = requests.get(f"{base}/health", timeout=45)
         return {"configured": True, "url": base, "status": r.status_code, "body": (r.text or "")[:500]}
     except Exception as e:
         return {"configured": True, "url": base, "error": str(e)}
