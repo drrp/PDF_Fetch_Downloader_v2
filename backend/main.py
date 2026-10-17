@@ -50,6 +50,55 @@ COOKIE_HTTPS_ONLY = os.getenv("COOKIE_HTTPS_ONLY", "true").strip().lower() in ("
 
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
+# --- Startup diagnostics: prints only whether each variable is present, never its value ---
+print(
+    "Startup config check ->",
+    "DATABASE_URL:", bool(DB_URL),
+    "| SESSION_SECRET_KEY:", bool(os.getenv("SESSION_SECRET_KEY")),
+    "| GOOGLE_CLIENT_ID:", bool(os.getenv("GOOGLE_CLIENT_ID")),
+    "| GOOGLE_CLIENT_SECRET:", bool(os.getenv("GOOGLE_CLIENT_SECRET")),
+    "| GOOGLE_CREDENTIALS_JSON:", bool(os.getenv("GOOGLE_CREDENTIALS_JSON")),
+    "| GEMINI_API_KEY:", bool(os.getenv("GEMINI_API_KEY")),
+)
+
+def build_vision_client():
+    """Create a Google Cloud Vision client from GOOGLE_CREDENTIALS_JSON.
+
+    Raises RuntimeError with a clear, actionable message when the credentials are
+    missing or malformed, so the OCR page shows something useful instead of a raw
+    library error about a credentials file.
+    """
+    creds_json = (os.getenv("GOOGLE_CREDENTIALS_JSON") or "").strip()
+    if creds_json:
+        try:
+            creds_dict = json.loads(creds_json)
+        except json.JSONDecodeError as e:
+            raise RuntimeError(
+                "GOOGLE_CREDENTIALS_JSON is not valid JSON. Paste the full "
+                "service-account JSON (from '{' to '}') as a single value. "
+                f"Parser said: {e}"
+            )
+        try:
+            credentials = service_account.Credentials.from_service_account_info(creds_dict)
+        except Exception as e:
+            raise RuntimeError(f"GOOGLE_CREDENTIALS_JSON is missing required fields: {e}")
+        try:
+            return vision.ImageAnnotatorClient(credentials=credentials)
+        except Exception as e:
+            raise RuntimeError(f"Google Vision rejected the service account: {e}")
+
+    # No JSON provided: fall back to application-default credentials, but explain
+    # clearly if that fails (it will on hosts like Render, where no file exists).
+    try:
+        return vision.ImageAnnotatorClient()
+    except Exception as e:
+        raise RuntimeError(
+            "Google Vision credentials are not configured. Set the "
+            "GOOGLE_CREDENTIALS_JSON environment variable to the full "
+            "service-account JSON, and remove any GOOGLE_APPLICATION_CREDENTIALS "
+            f"that points to a local file. Underlying error: {e}"
+        )
+
 def get_db_connection():
     if not DB_URL:
         raise Exception("DATABASE_URL environment variable is not set!")
@@ -405,14 +454,8 @@ def run_special_ocr(request: Request, filename: str = Query(...), start_page: in
         
     doc = None
     try:
-        # 🌟 Google Cloud Credentials ను Environment Variable నుండి తీసుకునే విధానం
-        google_creds_json = os.getenv("GOOGLE_CREDENTIALS_JSON")
-        if google_creds_json:
-            creds_dict = json.loads(google_creds_json)
-            credentials = service_account.Credentials.from_service_account_info(creds_dict)
-            client = vision.ImageAnnotatorClient(credentials=credentials)
-        else:
-            client = vision.ImageAnnotatorClient()
+        # 🌟 Google Cloud Vision క్లయింట్ — క్రెడెన్షియల్స్ లేకపోతే స్పష్టమైన ఎర్రర్ ఇస్తుంది
+        client = build_vision_client()
 
         doc = fitz.open(filepath)
         total_pages = len(doc)
