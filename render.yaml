@@ -1,0 +1,46 @@
+# Render Blueprint for the Telugu Digital Library Hub (PDF_Fetch_Downloader_v2)
+# Deploys the FastAPI backend, which also serves the frontend, as one web service.
+# Docs: https://render.com/docs/blueprint-spec
+services:
+  - type: web
+    name: pdf-fetch-downloader
+    runtime: python
+    plan: starter          # 'free' works for testing but sleeps and has no persistent disk
+    region: singapore      # closest Render region to India
+    buildCommand: pip install --upgrade pip && pip install -r requirements.txt
+    # --proxy-headers / --forwarded-allow-ips make uvicorn trust Render's HTTPS
+    # headers, so Google OAuth builds an https:// redirect URL (required for a
+    # custom domain such as library.auchithysm.com).
+    startCommand: uvicorn backend.main:app --host 0.0.0.0 --port $PORT --proxy-headers --forwarded-allow-ips="*"
+    healthCheckPath: /
+    autoDeploy: true
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.0
+      # --- Secrets: set these in the Render dashboard (sync: false keeps them out of git) ---
+      - key: DATABASE_URL
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: GOOGLE_CREDENTIALS_JSON
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      # --- Render generates a strong session key for you ---
+      - key: SESSION_SECRET_KEY
+        generateValue: true
+      # --- Plain config ---
+      - key: ADMIN_EMAIL
+        value: rpsarma9247@gmail.com
+      - key: GEMINI_MODEL
+        value: gemini-2.0-flash
+      - key: COOKIE_HTTPS_ONLY
+        value: "true"
+    # Persistent disk so downloaded PDFs survive restarts (needs a paid plan).
+    # Remove this block if you stay on the free plan.
+    disk:
+      name: downloads
+      mountPath: /opt/render/project/src/downloads
+      sizeGB: 1
