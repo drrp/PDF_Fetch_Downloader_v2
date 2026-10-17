@@ -19,6 +19,12 @@
     href="https://fonts.googleapis.com/css2?family=Mandali&family=Ramabhadra&family=Suranna&family=Inter:wght@400;500;600;700&display=swap"
     rel="stylesheet" />
 
+  <!-- ఛందస్సు (Chandam) - Telugu metre analysis. It beautifies every element we
+       render for a verse that carries the attribute chandam="1". -->
+  <link rel="stylesheet" href="https://chandamu.github.io/css/chandam.api.css" />
+  <script src="https://chandamu.github.io/js/es5-shim.js"></script>
+  <script src="https://chandamu.github.io/js/chandam.te.app.min.js"></script>
+
   <style>
     body {
       font-family: "Inter", sans-serif;
@@ -473,6 +479,29 @@
       }
     }
 
+    // ఛందస్సు: run the Chandam library over any verse we rendered (chandam="1").
+    function applyChandassu(attempt) {
+      attempt = attempt || 0;
+      if (window.require && typeof window.require === "function") {
+        try {
+          require(["MiriyamAPI"], function (MiriyamAPI) {
+            try {
+              MiriyamAPI.Worker.beautifyAll();
+            } catch (e) {
+              console.warn("chandam beautify failed", e);
+            }
+          });
+        } catch (e) {
+          console.warn("chandam require failed", e);
+        }
+      } else if (attempt < 12) {
+        // library still loading - try again shortly
+        setTimeout(function () {
+          applyChandassu(attempt + 1);
+        }, 500);
+      }
+    }
+
     async function runAdvancedSearch() {
       const query = document.getElementById("advancedQuery").value.trim();
       const resultsDiv = document.getElementById("advancedResults");
@@ -504,6 +533,7 @@
         if (data.ai_summary) {
           summaryText.innerHTML = marked.parse(data.ai_summary);
           summaryCard.style.display = "block";
+          applyChandassu();
         }
         
         // 2. 🌟 డేటాబేస్ మూల వాక్యాలను (Source Snippets) కార్డుల్లో చూపించడం

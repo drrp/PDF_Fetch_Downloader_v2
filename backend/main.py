@@ -594,6 +594,50 @@ def update_ocr_text(filename: str = Form(...), page_number: int = Form(...), new
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
+# Books that use the strict సూత్రము / వృత్తి / ఉదాహరణలు grammar template.
+# Every other book gets the general, template-free answer below.
+GRAMMAR_BOOKS = ("బాలవ్యాకరణము", "ప్రౌఢవ్యాకరణము")
+
+def _has_grammar_source(snippets_list):
+    for s in snippets_list:
+        title = s.get("book_title") or ""
+        if any(g in title for g in GRAMMAR_BOOKS):
+            return True
+    return False
+
+
+GENERAL_PROMPT = """You are an expert assistant on Telugu literature and classical texts.
+Answer the user's question: ('{query}')
+
+Answer in Telugu, grounded ONLY in the OCR text given below. Never invent a verse,
+meaning, or fact that is not supported by that text.
+
+⚠️ STRICT RULES FOR OCR REPRODUCTION:
+1. Do NOT autocorrect the OCR text. Reproduce characters and words exactly as given,
+   even if they look like typos or have missing letters.
+2. Do NOT add characters that are not in the text.
+3. Never use LaTeX or math notation (no $\\text{{...}}$). Write only plain Telugu.
+
+⚠️ OUTPUT FORMAT - simple and clean, with NO fixed template and NO coloured boxes:
+- Begin with a short Telugu heading naming the text and passage.
+- If the passage is a poem / verse (పద్యం), reproduce it EXACTLY as in the OCR text, inside
+  this exact markup so the metre (ఛందస్సు) is analysed automatically:
+    <div class="padyam" chandam="1">
+    first line<br>
+    second line<br>
+    third line<br>
+    fourth line
+    </div>
+  Put each line of the verse on its own line separated by <br>, with no verse number inside.
+- Then give the meaning / explanation in clear Telugu paragraphs (అర్థం / భావం).
+- Add a short "విశేషాలు" note only if the text supports it.
+- Reproduce the COMPLETE passage available below. Never cut off mid-sentence.
+- No preamble such as "Here is the answer". Start directly with the heading.
+
+OCR TEXT:
+{combined_text}"""
+
+
 def generate_ai_summary(query, snippets_list):
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key: return "⚠️ API కీ లభించలేదు."
@@ -604,7 +648,7 @@ def generate_ai_summary(query, snippets_list):
         combined_text = "\n".join([f"- గ్రంథం: {s['book_title']} (పేజీ {s['page_number']}): {s['snippet']}" for s in snippets_list])
         
         # 🌟 ఇక్కడ అదనపు Strict Rules ని ప్రాంప్ట్ లోకి చేర్చాము
-        prompt = f"""You are an expert assistant on Telugu traditional
+        grammar_prompt = f"""You are an expert assistant on Telugu traditional
                 grammar, grounded strictly in the ('{query}') from the text వ్యాకరణము.
         యూజర్ అడిగిన ('{query}') ఓసీఆర్ చేసిన డేటా ఆధారంగా మాత్రమే సమగ్రమైన సమాధానాన్ని తెలుగులో ఇవ్వండి.
         
@@ -709,12 +753,20 @@ def generate_ai_summary(query, snippets_list):
 
         {combined_text}"""
 
+        # Grammar books (బాలవ్యాకరణము / ప్రౌఢవ్యాకరణము) keep the strict సూత్రము
+        # template; every other book gets the general, template-free answer.
+        if _has_grammar_source(snippets_list):
+            prompt = grammar_prompt
+        else:
+            prompt = GENERAL_PROMPT.format(query=query, combined_text=combined_text)
+
         # 🌟 ఇక్కడ Temperature 0.0 కి సెట్ చేయబడింది.
         chat = client.chats.create(
             model=GEMINI_MODEL,
             config=types.GenerateContentConfig(
                 temperature=0.0,
-                top_p=0.1
+                top_p=0.1,
+                max_output_tokens=8192,
             )
         )
         response = chat.send_message(prompt)
@@ -782,6 +834,7 @@ def search_pdf_highlight(request: Request, query: str = Query(...), books: str =
     conn.close()
     
     results = []
+    ai_items = []
     for m in matches:
         text = m['extracted_text'] or ""
         pos = -1
@@ -803,7 +856,14 @@ def search_pdf_highlight(request: Request, query: str = Query(...), books: str =
                     
         if pos == -1: pos = 0
             
-        snippet = text[max(0, pos - 400):min(len(text), pos + 1000)].replace('\n', ' ')
+        snippet = text[max(0, pos - 400):min(len(text), pos + 1600)].replace('\n', ' ')
+        # The AI reads the FULL page text (capped), not the display window, so its
+        # answer is never cut off mid-passage.
+        ai_items.append({
+            "book_title": m['book_title'],
+            "page_number": m['page_number'],
+            "snippet": text.strip()[:6000],
+        })
         filename = m.get('filename')
         highlighted_img_b64 = ""
         
@@ -839,7 +899,7 @@ def search_pdf_highlight(request: Request, query: str = Query(...), books: str =
             "page_image": highlighted_img_b64
         })
         
-    ai_summary = generate_ai_summary(cleaned_query, results) if results else "మీరు అడిగిన అంశానికి సంబంధించిన సమాచారం ఎంచుకున్న గ్రంథాల OCR డేటాలో లభించలేదు."
+    ai_summary = generate_ai_summary(cleaned_query, ai_items[:8]) if ai_items else "మీరు అడిగిన అంశానికి సంబంధించిన సమాచారం ఎంచుకున్న గ్రంథాల OCR డేటాలో లభించలేదు."
     
     return {
         "query": cleaned_query,
