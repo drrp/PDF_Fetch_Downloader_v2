@@ -342,7 +342,7 @@ async function savePdfLocally(url, title, source, btnElement) {
           // scanned PDFs render very slowly in the browser.
           const a = document.createElement("a");
           a.href = data.download_url || data.file_url;
-          a.download = "";
+          a.download = data.filename || "";
           document.body.appendChild(a);
           a.click();
           a.remove();
