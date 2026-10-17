@@ -39,7 +39,7 @@ services:
       - key: ADMIN_EMAIL
         value: rpsarma9247@gmail.com
       - key: GEMINI_MODEL
-        value: gemini-2.0-flash
+        value: gemini-3.8-flash
       - key: COOKIE_HTTPS_ONLY
         value: "true"
     # Persistent disk so downloaded PDFs survive restarts. This needs a paid

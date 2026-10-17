@@ -89,7 +89,7 @@ Add these in **Settings -> Environment**:
 | `GOOGLE_CLIENT_SECRET` | from step 2 |
 | `GOOGLE_CREDENTIALS_JSON` | full Vision service-account JSON, one line |
 | `GEMINI_API_KEY` | from step 2 |
-| `GEMINI_MODEL` | `gemini-2.0-flash` |
+| `GEMINI_MODEL` | `gemini-3.8-flash` |
 | `ADMIN_EMAIL` | the email that gets the admin dashboard |
 | `COOKIE_HTTPS_ONLY` | `true` |
 | `PYTHON_VERSION` | `3.12.0` |
@@ -135,5 +135,5 @@ Render asks for a card for any paid instance or disk.
   restart, so keep the persistent disk (paid) or move PDFs to Supabase Storage.
 - **OCR and AI calls are heavy.** A free instance can time out on large books.
 - **Model name:** the AI summary reads the model from `GEMINI_MODEL`
-  (default `gemini-2.0-flash`). Change the env var if Google retires it.
+  (default `gemini-3.8-flash`). Change the env var if Google retires it.
 - **Secrets stay in the host's env vars.** `.env` is git-ignored.

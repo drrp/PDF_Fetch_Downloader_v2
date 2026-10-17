@@ -44,7 +44,7 @@ DB_URL = os.getenv("DATABASE_URL")
 # Email that gets the admin dashboard.
 ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "rpsarma9247@gmail.com")
 # Gemini model used for the AI summaries. Override if this name is retired.
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
 # Send the login cookie only over HTTPS. Set COOKIE_HTTPS_ONLY=false for plain-HTTP local dev.
 COOKIE_HTTPS_ONLY = os.getenv("COOKIE_HTTPS_ONLY", "true").strip().lower() in ("1", "true", "yes", "on")
 
