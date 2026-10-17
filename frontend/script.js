@@ -328,17 +328,24 @@ async function savePdfLocally(url, title, source, btnElement) {
 
       Swal.fire({
         title: "డౌన్‌లోడ్ పూర్తయింది!",
-        text: `"${title}" విజయవంతంగా మీ కంప్యూటర్‌లో సేవ్ చేయబడింది.`,
+        text: `"${title}" ఫైల్‌ను మీ కంప్యూటర్‌లో సేవ్ చేయడానికి కింద నొక్కండి.`,
         icon: "success",
         showCancelButton: true,
         confirmButtonColor: "#059669",
         cancelButtonColor: "#64748b",
         confirmButtonText:
-          '<i class="fa-solid fa-book-open"></i> పుస్తకం తెరవండి',
+          '<i class="fa-solid fa-download"></i> ఫైల్ సేవ్ చేయండి',
         cancelButtonText: "మూసివేయండి",
       }).then((res) => {
         if (res.isConfirmed) {
-          window.open(data.file_url, "_blank");
+          // Download the file to disk instead of opening it in a tab: large
+          // scanned PDFs render very slowly in the browser.
+          const a = document.createElement("a");
+          a.href = data.download_url || data.file_url;
+          a.download = "";
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
         }
       });
     } else if (data.status === "gdrive_restricted") {

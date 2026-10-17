@@ -24,6 +24,7 @@ from fastapi import FastAPI, Query, Request, Depends
 from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from datetime import datetime
+from urllib.parse import quote
 from backend.svk import SVKScraper
 from backend.archive import InternetArchiveScraper
 from backend.manasu import ManasuFoundationScraper
@@ -422,10 +423,33 @@ def download_book(request: Request, book_page_url: str = Query(...), title: str 
             svk_scraper.download(book_page_url, title, filepath)
             
         log_user_activity(request, "Download", f"డౌన్‌లోడ్: '{title}' ({source})", "Success")
-        return {"status": "success", "message": "పుస్తకం విజయవంతంగా డౌన్‌లోడ్ చేయబడింది!", "file_url": f"/downloads/{filename}"}
+        return {
+            "status": "success",
+            "message": "పుస్తకం విజయవంతంగా డౌన్‌లోడ్ చేయబడింది!",
+            "file_url": f"/downloads/{filename}",
+            "filename": filename,
+            "download_url": f"/download-file?filename={quote(filename)}",
+        }
     except Exception as e:
         log_user_activity(request, "Download", f"విఫలం: '{title}' | ఎర్రర్: {str(e)}", "Failed")
         return {"status": "error", "message": str(e)}
+
+@app.get("/download-file")
+def download_file(request: Request, filename: str = Query(...)):
+    """Serve a saved PDF as a file download (attachment) rather than inline.
+
+    Browsers render large scanned PDFs very slowly in a tab; sending
+    Content-Disposition: attachment saves the file straight to the user's disk.
+    """
+    user = request.session.get('user')
+    if not user:
+        return RedirectResponse(url='/login/google', status_code=303)
+    # os.path.basename prevents path traversal (e.g. '../../etc/passwd')
+    safe_name = os.path.basename(filename)
+    filepath = os.path.join(DOWNLOAD_DIR, safe_name)
+    if not os.path.exists(filepath):
+        return {"error": "File not found"}
+    return FileResponse(filepath, media_type='application/pdf', filename=safe_name)
 
 @app.get("/list-downloaded-books")
 def list_downloaded_books(request: Request):
