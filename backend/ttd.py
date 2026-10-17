@@ -1,4 +1,5 @@
 import os
+import time
 import requests
 from bs4 import BeautifulSoup
 import concurrent.futures
@@ -13,6 +14,12 @@ class BaseLibraryScraper:
         raise NotImplementedError
 
 class TTDScraper(BaseLibraryScraper):
+    # Time budget (seconds) for one whole download, shared across every retry, so a
+    # stalled server can never hang the request for tens of minutes.
+    TOTAL_BUDGET = 180
+    # Longest we wait for data between chunks on a single request.
+    READ_CAP = 120
+
     def __init__(self):
         self.base_domain = "https://ebooks.tirumala.org"
         self.headers = {
@@ -110,22 +117,38 @@ class TTDScraper(BaseLibraryScraper):
         session = requests.Session()
         session.headers.update(self.headers)
 
+        # One shared time budget for the whole operation. Every request below is
+        # bounded by whatever is left of it, so the call always returns within
+        # about TOTAL_BUDGET seconds no matter how badly the server behaves.
+        deadline = time.monotonic() + self.TOTAL_BUDGET
+
+        def remaining():
+            return deadline - time.monotonic()
+
         last_error = ""
         timed_out = False
 
-        # The TTD server is often slow, so retry a few times with generous windows.
-        for attempt in range(1, 4):
+        for attempt in range(1, 3):  # up to 2 tries
+            if remaining() <= 0:
+                break
+
             # Warm up the reader page so the download endpoint sees a session.
             try:
-                session.get(book_page_url, timeout=(15, 60))
+                session.get(book_page_url, timeout=(10, min(30, remaining())))
             except requests.exceptions.RequestException:
                 pass  # not fatal on its own
 
             for url in candidate_urls:
+                if remaining() <= 0:
+                    break
                 try:
                     download_headers = {"Referer": book_page_url}
-                    # (connect timeout, read timeout): allow up to ~5 min of slow streaming
-                    resp = session.get(url, headers=download_headers, stream=True, timeout=(30, 300))
+                    resp = session.get(
+                        url,
+                        headers=download_headers,
+                        stream=True,
+                        timeout=(min(20, remaining()), min(self.READ_CAP, remaining())),
+                    )
                     if resp.status_code != 200:
                         last_error = f"HTTP {resp.status_code} from {url}"
                         continue
@@ -134,6 +157,8 @@ class TTDScraper(BaseLibraryScraper):
                         for chunk in resp.iter_content(chunk_size=65536):
                             if chunk:
                                 f.write(chunk)
+                            if remaining() <= 0:
+                                raise requests.exceptions.Timeout("exceeded time budget")
 
                     # Make sure we actually received a PDF, not an HTML error page.
                     with open(filepath, "rb") as f:
@@ -157,9 +182,12 @@ class TTDScraper(BaseLibraryScraper):
 
         if timed_out:
             raise Exception(
-                "The TTD server did not respond in time (tried 3 times with longer "
-                "windows). This is usually the TTD server being slow, or it blocking "
-                "requests from outside India. Try again later, or open the book page "
-                f"directly: {book_page_url}"
+                f"The TTD server did not respond within about {self.TOTAL_BUDGET} seconds. "
+                "This is usually the TTD server being slow, or it blocking requests "
+                "from outside India. Try again later, or open the book page directly: "
+                f"{book_page_url}"
             )
-        raise Exception(f"Could not download this TTD ebook. Last error: {last_error}")
+        raise Exception(
+            f"Could not download this TTD ebook. Last error: "
+            f"{last_error or 'the download ran out of time'}"
+        )
