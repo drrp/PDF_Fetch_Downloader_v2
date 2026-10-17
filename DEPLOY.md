@@ -92,6 +92,7 @@ Add these in **Settings -> Environment**:
 | `GEMINI_MODEL` | `gemini-3.8-flash` |
 | `ADMIN_EMAIL` | the email that gets the admin dashboard |
 | `COOKIE_HTTPS_ONLY` | `true` |
+| `CHANDAM_API_URL` | internal URL of the `chandam-api` service (see 3e) |
 | `PYTHON_VERSION` | `3.12.0` |
 
 ### 3d. Free tier vs paid (and the card prompt)
@@ -104,6 +105,26 @@ To keep downloads across restarts, move to a paid instance and add a disk: set
 `plan: starter` in `render.yaml` and uncomment the `disk:` block, or use
 **Settings -> Disks -> Add** with mount path `/opt/render/project/src/downloads`.
 Render asks for a card for any paid instance or disk.
+
+### 3e. Chandam (ఛందస్సు) API service
+
+For poetry searches the app asks the **Chandam API** to identify the metre of each
+verse. That API is a separate .NET service published as a public Docker image, so it
+runs as its own Render service (declared in `render.yaml` as `chandam-api`).
+
+- Image: `ghcr.io/miriyald/chandam-api:latest`
+  (project: https://github.com/miriyald/chandam)
+- It listens on port 10000 (set via `ASPNETCORE_URLS`), rule set `default`.
+- The app reaches it over Render's internal network through `CHANDAM_API_URL`, wired
+  with `fromService: { property: hostport }` (Render passes `chandam-api:10000`).
+- The app prepends `http://` when the value has no scheme, so `chandam-api:10000`
+  works as-is. Point `CHANDAM_API_URL` at a full `https://...` URL if you ever host
+  the API somewhere else.
+
+Endpoints used: `POST /api/determine` (metre identification) and `GET /health`.
+
+If you don't want chandassu analysis, delete the `chandam-api` service and the
+`CHANDAM_API_URL` variable — the app skips it automatically.
 
 ## 4. Custom domain: library.auchithyam.com
 

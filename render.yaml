@@ -42,6 +42,13 @@ services:
         value: gemini-3.8-flash
       - key: COOKIE_HTTPS_ONLY
         value: "true"
+      # Internal URL of the Chandam API service declared below (no scheme; the app
+      # prepends http://). Delete this if you don't want chandassu analysis.
+      - key: CHANDAM_API_URL
+        fromService:
+          type: web
+          name: chandam-api
+          property: hostport
     # Persistent disk so downloaded PDFs survive restarts. This needs a paid
     # instance AND a payment method on file, so it is commented out for the free
     # tier. To enable it: set plan back to 'starter' above and uncomment this block.
@@ -49,3 +56,21 @@ services:
     #   name: downloads
     #   mountPath: /opt/render/project/src/downloads
     #   sizeGB: 1
+
+  # Chandam (ఛందస్సు) API - identifies the metre of a Telugu verse.
+  # Public image from the project: https://github.com/miriyald/chandam
+  - type: web
+    name: chandam-api
+    runtime: image
+    image:
+      url: ghcr.io/miriyald/chandam-api:latest
+    plan: free
+    region: singapore
+    healthCheckPath: /health
+    envVars:
+      # The image listens on 8080 by default; Render routes traffic to PORT (10000),
+      # so point ASP.NET at that port.
+      - key: ASPNETCORE_URLS
+        value: http://+:10000
+      - key: CHANDAM_RULESET
+        value: default

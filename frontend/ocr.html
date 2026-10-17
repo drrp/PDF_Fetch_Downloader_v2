@@ -19,13 +19,25 @@
     href="https://fonts.googleapis.com/css2?family=Mandali&family=Ramabhadra&family=Suranna&family=Inter:wght@400;500;600;700&display=swap"
     rel="stylesheet" />
 
-  <!-- ఛందస్సు (Chandam) - Telugu metre analysis. It beautifies every element we
-       render for a verse that carries the attribute chandam="1". -->
-  <link rel="stylesheet" href="https://chandamu.github.io/css/chandam.api.css" />
-  <script src="https://chandamu.github.io/js/es5-shim.js"></script>
-  <script src="https://chandamu.github.io/js/chandam.te.app.min.js"></script>
-
   <style>
+    /* ఛందస్సు (Chandam API) output styling */
+    .padyam {
+      border: 1px solid #e2e8f0;
+      border-left: 4px solid #0d6efd;
+      margin: 8px 0;
+      padding: 10px 14px;
+      font-size: 18px;
+      line-height: 2;
+      letter-spacing: 0.5px;
+      background: #fff;
+      border-radius: 6px;
+    }
+    .chandassu { color: #1d4ed8; font-size: 22px; font-weight: 700; }
+    .poem u { color: #dc2626; text-decoration: none; font-weight: 700; }
+    .poem b { color: #059669; font-weight: 700; }
+    .chandam-gana table { border-collapse: collapse; margin-top: 8px; }
+    .chandam-gana td, .chandam-gana th { border: 1px solid #dee2e6; padding: 3px 6px; font-size: 14px; }
+
     body {
       font-family: "Inter", sans-serif;
       background-color: #8d4204;
@@ -153,6 +165,17 @@
         </div>
         <div class="card-body p-4">
           <div id="aiSummaryText" class="ai-formatted-content"></div>
+        </div>
+      </div>
+
+      <div id="chandassuCard" class="card mb-4 shadow-sm bg-white rounded-4"
+        style="display: none; margin-top: 20px; border: 1px solid #bfdbfe">
+        <div class="card-header fw-bold py-3 rounded-top-4 telugu-title"
+          style="font-size: 20px; background: #dbeafe; color: #1e40af">
+          ఛందస్సు విశ్లేషణ (Chandam API)
+        </div>
+        <div class="card-body p-4">
+          <div id="chandassuBody" class="telugu-body"></div>
         </div>
       </div>
 
@@ -479,34 +502,13 @@
       }
     }
 
-    // ఛందస్సు: run the Chandam library over any verse we rendered (chandam="1").
-    function applyChandassu(attempt) {
-      attempt = attempt || 0;
-      if (window.require && typeof window.require === "function") {
-        try {
-          require(["MiriyamAPI"], function (MiriyamAPI) {
-            try {
-              MiriyamAPI.Worker.beautifyAll();
-            } catch (e) {
-              console.warn("chandam beautify failed", e);
-            }
-          });
-        } catch (e) {
-          console.warn("chandam require failed", e);
-        }
-      } else if (attempt < 12) {
-        // library still loading - try again shortly
-        setTimeout(function () {
-          applyChandassu(attempt + 1);
-        }, 500);
-      }
-    }
-
     async function runAdvancedSearch() {
       const query = document.getElementById("advancedQuery").value.trim();
       const resultsDiv = document.getElementById("advancedResults");
       const summaryCard = document.getElementById("aiSummaryCard");
       const summaryText = document.getElementById("aiSummaryText");
+      const chandassuCard = document.getElementById("chandassuCard");
+      const chandassuBody = document.getElementById("chandassuBody");
 
       // చెక్‌బాక్స్‌లలో సెలెక్ట్ చేసిన పుస్తకాల పేర్లను కనుక్కోవడం
       const selectedBooks = Array.from(
@@ -533,7 +535,25 @@
         if (data.ai_summary) {
           summaryText.innerHTML = marked.parse(data.ai_summary);
           summaryCard.style.display = "block";
-          applyChandassu();
+        }
+
+        // ఛందస్సు: result from the Chandam API
+        if (
+          data.chandassu &&
+          (data.chandassu.name || data.chandassu.beautified || data.chandassu.html)
+        ) {
+          const cd = data.chandassu;
+          let ch = `<div class="chandassu mb-2">ఛందస్సు: ${cd.name || "తెలియదు"}`;
+          if (cd.percentage !== null && cd.percentage !== undefined) {
+            ch += ` <span style="font-size:15px;color:#475569;">(${cd.percentage}% సరిపోలిక)</span>`;
+          }
+          ch += `</div>`;
+          if (cd.beautified) ch += cd.beautified;
+          if (cd.html) ch += `<div class="chandam-gana mt-2">${cd.html}</div>`;
+          chandassuBody.innerHTML = ch;
+          chandassuCard.style.display = "block";
+        } else {
+          chandassuCard.style.display = "none";
         }
         
         // 2. 🌟 డేటాబేస్ మూల వాక్యాలను (Source Snippets) కార్డుల్లో చూపించడం

@@ -48,6 +48,9 @@ ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "rpsarma9247@gmail.com")
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
 # Send the login cookie only over HTTPS. Set COOKIE_HTTPS_ONLY=false for plain-HTTP local dev.
 COOKIE_HTTPS_ONLY = os.getenv("COOKIE_HTTPS_ONLY", "true").strip().lower() in ("1", "true", "yes", "on")
+# Base URL of the Chandam (ఛందస్సు) API. Accepts a full URL or Render's internal
+# "host:port". Leave empty to disable chandassu analysis.
+CHANDAM_API_URL = os.getenv("CHANDAM_API_URL", "").strip()
 
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
@@ -606,6 +609,65 @@ def _has_grammar_source(snippets_list):
     return False
 
 
+def _chandam_base_url():
+    url = CHANDAM_API_URL
+    if url and not url.startswith("http"):
+        url = "http://" + url  # Render's internal host:port has no scheme
+    return url.rstrip("/")
+
+
+def _extract_verse(summary_html):
+    """Pull the verse text out of the <div ... chandam="1"> block in the summary."""
+    if not summary_html:
+        return ""
+    m = re.search(r'<div[^>]*chandam=["\']1["\'][^>]*>(.*?)</div>', summary_html, re.S | re.I)
+    if not m:
+        return ""
+    inner = re.sub(r'<br\s*/?>', '\n', m.group(1), flags=re.I)
+    inner = re.sub(r'<[^>]+>', '', inner)
+    return inner.strip()
+
+
+def analyze_chandassu(poem_text):
+    """Ask the Chandam API to identify the metre (ఛందస్సు) of a verse."""
+    base = _chandam_base_url()
+    if not base or not (poem_text or "").strip():
+        return None
+    try:
+        resp = requests.post(
+            f"{base}/api/determine",
+            json={
+                "poemText": poem_text,
+                "language": 0,       # 0 = Telugu
+                "matchYati": True,
+                "matchPrasa": True,
+                "topMatches": 3,
+                "renderFormat": 1,   # 1 = Html
+            },
+            timeout=20,
+        )
+        if resp.status_code != 200:
+            print("Chandam API HTTP", resp.status_code, (resp.text or "")[:200])
+            return None
+        matches = (resp.json() or {}).get("matches") or []
+        if not matches:
+            return None
+        best = matches[0]
+        rule = best.get("rule") or {}
+        return {
+            "name": rule.get("name") or rule.get("chandamName") or rule.get("identifier") or "",
+            "identifier": rule.get("identifier") or "",
+            "percentage": best.get("matchPercentage"),
+            "is_matched": best.get("isMatched"),
+            "beautified": best.get("beautified") or "",
+            "html": best.get("html") or "",
+            "errors": best.get("errors") or [],
+        }
+    except Exception as e:
+        print("Chandam API error:", e)
+        return None
+
+
 GENERAL_PROMPT = """You are an expert assistant on Telugu literature and classical texts.
 Answer the user's question: ('{query}')
 
@@ -900,10 +962,17 @@ def search_pdf_highlight(request: Request, query: str = Query(...), books: str =
         })
         
     ai_summary = generate_ai_summary(cleaned_query, ai_items[:8]) if ai_items else "మీరు అడిగిన అంశానికి సంబంధించిన సమాచారం ఎంచుకున్న గ్రంథాల OCR డేటాలో లభించలేదు."
-    
+
+    # ఛందస్సు: for poetry (non-grammar) searches, ask the Chandam API for the metre.
+    chandassu = None
+    if ai_items and not _has_grammar_source(ai_items):
+        verse_text = _extract_verse(ai_summary) or ai_items[0]["snippet"][:1500]
+        chandassu = analyze_chandassu(verse_text)
+
     return {
         "query": cleaned_query,
         "ai_summary": ai_summary,
+        "chandassu": chandassu,
         "results": results
     }
     
