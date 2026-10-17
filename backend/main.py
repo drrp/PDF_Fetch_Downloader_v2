@@ -92,11 +92,19 @@ def build_vision_client():
     try:
         return vision.ImageAnnotatorClient()
     except Exception as e:
+        hint = ""
+        gac = (os.getenv("GOOGLE_APPLICATION_CREDENTIALS") or "").strip()
+        if gac.startswith("{"):
+            hint = (
+                " It looks like GOOGLE_APPLICATION_CREDENTIALS contains the JSON "
+                "itself - that variable must be a file PATH. Move the JSON into "
+                "GOOGLE_CREDENTIALS_JSON and delete GOOGLE_APPLICATION_CREDENTIALS."
+            )
         raise RuntimeError(
             "Google Vision credentials are not configured. Set the "
             "GOOGLE_CREDENTIALS_JSON environment variable to the full "
             "service-account JSON, and remove any GOOGLE_APPLICATION_CREDENTIALS "
-            f"that points to a local file. Underlying error: {e}"
+            f"that points to a local file.{hint} Underlying error: {e}"
         )
 
 def get_db_connection():
